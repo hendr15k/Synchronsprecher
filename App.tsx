@@ -94,9 +94,7 @@ const App: React.FC = () => {
     if (progressFrameRef.current) cancelAnimationFrame(progressFrameRef.current);
     
     // 3. Clear In-Memory Promises (but kept in IndexedDB)
-    if (!isReaderMode) {
-        audioCacheRef.current.clear();
-    }
+    audioCacheRef.current.clear();
     
     setAudioState(prev => ({ 
       ...prev, 
@@ -121,8 +119,9 @@ const App: React.FC = () => {
         return await decodeAudioData(bytes, ctx);
     })();
 
-    promise.catch(err => {
-        if (err.message?.includes('cancelled')) {
+    promise.catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('cancelled')) {
              console.log(`Fetch cancelled for chunk ${index}`);
         } else {
              console.error(`Failed to fetch chunk ${index}`, err);
@@ -209,9 +208,9 @@ const App: React.FC = () => {
         // 10. Clean old cache to save RAM
         if (index > 2) audioCacheRef.current.delete(index - 3);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
         // Enhance error message for end users
-        let msg = err.message || "Unknown error";
+        let msg = err instanceof Error ? err.message : "Unknown error";
         
         // Handle specific 429 messages
         if (msg.includes('429') || msg.toLowerCase().includes('quota')) {
@@ -274,6 +273,10 @@ const App: React.FC = () => {
       // Clear pending generations to save quota!
       cancelGenerations();
       
+      // Clear the in-memory cache to prevent memory leaks from previous distant chunks
+      // We rely on IndexedDB for persistence; RAM should be freed.
+      audioCacheRef.current.clear();
+
       // Don't stopFull() here, just switch. 
       // playChunk will handle stopping the previous node.
       if (audioContextRef.current?.state === 'suspended') await audioContextRef.current.resume();
@@ -304,7 +307,8 @@ const App: React.FC = () => {
       try {
           const imgUrl = await generateSceneImage(textChunks[currentChunkIndex]);
           setGeneratedImageUrl(imgUrl);
-      } catch (e: any) {
+      } catch (e: unknown) {
+          console.error(e);
           setAudioState(prev => ({ ...prev, error: "Image generation failed." }));
       } finally {
           setIsGeneratingImage(false);
@@ -318,8 +322,9 @@ const App: React.FC = () => {
       const extractedText = await parseFile(file);
       setText(extractedText);
       setIsReaderMode(false);
-    } catch (err: any) {
-      setAudioState(prev => ({ ...prev, error: `Import failed: ${err.message}` }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setAudioState(prev => ({ ...prev, error: `Import failed: ${msg}` }));
     } finally {
       setIsProcessingFile(false);
     }
