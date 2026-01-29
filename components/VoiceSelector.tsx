@@ -25,7 +25,6 @@ export const VoiceSelector: React.FC<VoiceSelectorProps> = ({
             key={voice.name}
             onClick={() => onSelectVoice(voice.name)}
             disabled={disabled}
-            aria-pressed={selectedVoice === voice.name}
             className={`
               flex items-center gap-3 p-3 rounded-lg border text-left transition-all
               ${selectedVoice === voice.name

@@ -110,20 +110,17 @@ export function cancelGenerations() {
 // --- Retry Logic ---
 
 async function withRetry<T>(operation: () => Promise<T>, retries = 3, baseDelay = 1000): Promise<T> {
-  let lastError: unknown;
+  let lastError: any;
   
   for (let i = 0; i < retries; i++) {
     try {
       return await operation();
-    } catch (err: unknown) {
+    } catch (err: any) {
       lastError = err;
-      const message = err instanceof Error ? err.message : String(err);
-      const status = (err as any)?.status; // Safe to cast to any for optional property check on unknown
-
-      const isRateLimit = message.includes('429') || status === 429 || message.toLowerCase().includes('quota');
-      const isServerOverload = status === 503;
+      const isRateLimit = err.message?.includes('429') || err.status === 429 || err.message?.toLowerCase().includes('quota');
+      const isServerOverload = err.status === 503;
       
-      if (message.includes('limit: 0')) {
+      if (err.message?.includes('limit: 0')) {
           throw new Error("Daily API Quota Exceeded. Please check your Google Cloud billing or try again tomorrow.");
       }
 
@@ -160,7 +157,6 @@ function getVoiceForSpeaker(speakerName: string, narratorVoiceName: VoiceName): 
 // --- API Interactions ---
 
 export async function generateSceneImage(text: string): Promise<string> {
-  if (!process.env.API_KEY) throw new Error("API Key is missing.");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Create a cinematic, high-quality digital illustration depicting this scene. Style: Atmospheric, detailed. Scene description: ${text.slice(0, 500)}`;
 
@@ -180,7 +176,6 @@ export async function generateSceneImage(text: string): Promise<string> {
 }
 
 async function analyzeTextForSegments(text: string): Promise<Array<{speaker: string, text: string}>> {
-  if (!process.env.API_KEY) throw new Error("API Key is missing.");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const schema = {
@@ -225,7 +220,7 @@ async function analyzeTextForSegments(text: string): Promise<Array<{speaker: str
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       // Fallback if array is empty
       return [{ speaker: "Narrator", text: text }]; 
-    } catch (e: unknown) {
+    } catch (e) {
       console.error("Failed to parse segmentation JSON", e);
       return [{ speaker: "Narrator", text: text }]; 
     }
@@ -233,7 +228,6 @@ async function analyzeTextForSegments(text: string): Promise<Array<{speaker: str
 }
 
 async function generateSingleSpeakerAudio(text: string, voice: VoiceName): Promise<Uint8Array> {
-  if (!process.env.API_KEY) throw new Error("API Key is missing.");
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   return apiQueue.add(() => withRetry(async () => {
@@ -293,7 +287,7 @@ export async function generateSpeech(
       const mergedAudio = concatAudioBuffers(audioBuffers);
       resultBase64 = encodeBase64(mergedAudio);
 
-    } catch (error: unknown) {
+    } catch (error) {
       console.error("Multi-speaker generation failed, falling back to single speaker:", error);
       const audioBytes = await generateSingleSpeakerAudio(text, voice);
       resultBase64 = encodeBase64(audioBytes);
