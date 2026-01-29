@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { VoiceName, AudioState } from './types';
 import { decodeBase64, decodeAudioData } from './utils/audioUtils';
 import { generateSpeech, generateSceneImage, cancelGenerations } from './services/geminiService';
+import { audioCache } from './utils/cache';
 import { parseFile } from './utils/fileParsers';
 import { chunkText } from './utils/textProcessors';
 import { VoiceSelector } from './components/VoiceSelector';
@@ -15,8 +16,17 @@ const App: React.FC = () => {
   const [text, setText] = useState<string>(
     "Welcome to the ElevenReader Clone. Paste long text or upload an ePub/PDF to see the 'Stage Reading' in action. Once you start, tap any paragraph to jump there, or click 'Visualize' to see the scene."
   );
-  const [selectedVoice, setSelectedVoice] = useState<VoiceName>(VoiceName.Kore);
-  const [useMultiSpeaker, setUseMultiSpeaker] = useState<boolean>(false);
+
+  // Load preferences from localStorage
+  const [selectedVoice, setSelectedVoice] = useState<VoiceName>(() => {
+    const saved = localStorage.getItem('selectedVoice');
+    return (saved as VoiceName) || VoiceName.Kore;
+  });
+
+  const [useMultiSpeaker, setUseMultiSpeaker] = useState<boolean>(() => {
+    return localStorage.getItem('useMultiSpeaker') === 'true';
+  });
+
   const [isReaderMode, setIsReaderMode] = useState<boolean>(false);
   
   // --- Reading Session State ---
@@ -61,6 +71,15 @@ const App: React.FC = () => {
         activeChunkRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [currentChunkIndex, isReaderMode]);
+
+  // Persist settings
+  useEffect(() => {
+    localStorage.setItem('selectedVoice', selectedVoice);
+  }, [selectedVoice]);
+
+  useEffect(() => {
+    localStorage.setItem('useMultiSpeaker', String(useMultiSpeaker));
+  }, [useMultiSpeaker]);
 
   // --- Audio Context Management ---
   const getAudioContext = async () => {
@@ -325,6 +344,15 @@ const App: React.FC = () => {
     }
   };
 
+  const handleClearCache = async () => {
+      if (confirm("Are you sure you want to clear the audio cache? This will delete all downloaded audio files.")) {
+          stopPlaybackFull();
+          await audioCache.clear();
+          audioCacheRef.current.clear();
+          alert("Cache cleared.");
+      }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-stone-950 text-stone-200">
       <input type="file" ref={fileInputRef} onChange={(e) => {
@@ -414,6 +442,15 @@ const App: React.FC = () => {
                      </p>
                   </div>
               )}
+
+              <div className="mt-8 pt-4 border-t border-stone-800">
+                <button
+                  onClick={handleClearCache}
+                  className="w-full py-2 text-xs text-stone-600 hover:text-red-400 transition-colors uppercase tracking-wider font-bold border border-stone-800 hover:border-red-900/30 rounded bg-stone-900 hover:bg-red-900/10"
+                >
+                  Clear Audio Cache
+                </button>
+              </div>
            </div>
         </aside>
 
