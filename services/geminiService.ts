@@ -157,12 +157,12 @@ function getVoiceForSpeaker(speakerName: string, narratorVoiceName: VoiceName): 
 // --- API Interactions ---
 
 export async function generateSceneImage(text: string): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   const prompt = `Create a cinematic, high-quality digital illustration depicting this scene. Style: Atmospheric, detailed. Scene description: ${text.slice(0, 500)}`;
 
   return withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-2.0-flash-exp',
       contents: { parts: [{ text: prompt }] },
     });
 
@@ -176,7 +176,7 @@ export async function generateSceneImage(text: string): Promise<string> {
 }
 
 async function analyzeTextForSegments(text: string): Promise<Array<{speaker: string, text: string}>> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   
   const schema = {
     type: Type.ARRAY,
@@ -192,10 +192,10 @@ async function analyzeTextForSegments(text: string): Promise<Array<{speaker: str
 
   // Note: We use the queue for analysis too, as it consumes quota
   return apiQueue.add(() => withRetry(async () => {
-    // We switched to 'gemini-flash-latest' (Standard Flash). 
+    // We switched to 'gemini-1.5-flash' (Standard Flash).
     // It is smarter than Lite (better detection) but cheaper/faster than Pro.
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest", 
+      model: "gemini-1.5-flash",
       contents: `You are a professional script editor. 
       Analyze the text and split it into dialogue segments for an audio drama.
       
@@ -228,11 +228,11 @@ async function analyzeTextForSegments(text: string): Promise<Array<{speaker: str
 }
 
 async function generateSingleSpeakerAudio(text: string, voice: VoiceName): Promise<Uint8Array> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
   
   return apiQueue.add(() => withRetry(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: "gemini-2.0-flash-exp",
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
@@ -258,7 +258,7 @@ export async function generateSpeech(
   voice: VoiceName, 
   isMultiSpeaker: boolean = false
 ): Promise<string> {
-  if (!process.env.API_KEY) throw new Error("API Key is missing.");
+  if (!import.meta.env.VITE_GEMINI_API_KEY) throw new Error("API Key is missing.");
 
   // 1. Check Cache (Persistent IndexedDB)
   const cacheKey = audioCache.generateKey(text, voice, isMultiSpeaker ? 'multi' : 'single');
