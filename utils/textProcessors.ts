@@ -24,13 +24,21 @@ export function chunkText(text: string, maxChunkSize: number = 1500): string[] {
 
       // If the paragraph ITSELF is huge (bigger than max chunk), we must split it by sentences
       if (paragraph.length > maxChunkSize) {
-        const sentences = paragraph.match(/[^.!?]+[.!?]+(\s+|$)/g) || [paragraph];
-        for (const sentence of sentences) {
-           if (currentChunk.length + sentence.length > maxChunkSize) {
+        let subChunks = paragraph.match(/[^.!?]+[.!?]+(\s+|$)/g);
+
+        // Fallback: Hard split if no sentences found
+        if (!subChunks) {
+            subChunks = paragraph.match(new RegExp(`[\\s\\S]{1,${maxChunkSize}}`, 'g'));
+        }
+
+        const segments = subChunks || [paragraph];
+
+        for (const segment of segments) {
+           if (currentChunk.length + segment.length > maxChunkSize) {
               if (currentChunk.trim()) chunks.push(currentChunk.trim());
-              currentChunk = sentence;
+              currentChunk = segment;
            } else {
-              currentChunk += sentence;
+              currentChunk += segment;
            }
         }
       } else {

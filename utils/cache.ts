@@ -58,6 +58,16 @@ export const audioCache = {
     };
   },
 
+  async clear(): Promise<void> {
+    if (typeof indexedDB === 'undefined') return;
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(DB_NAME);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject();
+        req.onblocked = () => resolve();
+    });
+  },
+
   // Helper to generate a unique key for the request
   generateKey(text: string, voice: string, mode: string): string {
     // Simple hash function for the key
