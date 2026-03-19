@@ -1,5 +1,4 @@
 import React from 'react';
-import { formatTime } from '../utils/audioUtils';
 
 interface PlayerBarProps {
   isPlaying: boolean;
@@ -11,6 +10,7 @@ interface PlayerBarProps {
   disabled?: boolean;
   title?: string;
   isGeneratingImage?: boolean;
+  isPercentage?: boolean;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -21,13 +21,15 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   currentTime,
   duration,
   disabled,
-  title = "Ready to synthesize",
-  isGeneratingImage = false
+  title = "Ready to read",
+  isGeneratingImage = false,
+  isPercentage = false
 }) => {
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progress = isPercentage ? currentTime : (duration > 0 ? (currentTime / duration) * 100 : 0);
+  const displayProgress = Math.min(Math.max(progress, 0), 100);
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (disabled || duration === 0) return;
+    if (disabled) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percentage = x / rect.width;
@@ -67,47 +69,42 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
              {title}
           </h3>
           <span className="text-xs font-mono text-stone-500">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {Math.round(displayProgress)}%
           </span>
         </div>
 
-        {/* Clickable Progress Bar Container */}
+        {/* Progress Bar */}
         <div 
           className={`w-full h-2 bg-stone-800 rounded-full overflow-hidden relative group ${!disabled && 'cursor-pointer'}`}
           onClick={handleProgressClick}
         >
-          {/* Active Progress */}
           <div
-            className="h-full bg-indigo-500 rounded-full relative"
-            style={{ width: `${progress}%` }}
+            className="h-full bg-indigo-500 rounded-full relative transition-all duration-300"
+            style={{ width: `${displayProgress}%` }}
           >
-             {/* Handle knob (visual only, appears on hover) */}
              <div className="absolute right-0 top-1/2 transform translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow-sm transition-opacity" />
           </div>
         </div>
       </div>
 
-      {/* Scene Visualization Button */}
+      {/* Stop Button */}
       <button
-        onClick={onGenerateImage}
-        disabled={disabled || isGeneratingImage}
+        onClick={() => onSeek(0)}
+        disabled={disabled}
         className={`
           flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg border transition-all flex-shrink-0
-          ${isGeneratingImage 
-             ? 'bg-stone-800 border-stone-700 text-stone-500 cursor-wait' 
-             : disabled 
-                ? 'opacity-30 cursor-not-allowed border-stone-800'
-                : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-indigo-400 hover:border-indigo-500/50 hover:bg-stone-800'
+          ${disabled 
+             ? 'opacity-30 cursor-not-allowed border-stone-800'
+             : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-red-400 hover:border-red-500/50 hover:bg-stone-800'
           }
         `}
-        title="Visualize current scene"
+        title="Stop and reset"
       >
-        {isGeneratingImage ? (
-           <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-        ) : (
-           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-        )}
-        <span className="hidden md:inline text-[10px] uppercase font-bold tracking-wider">Visualize</span>
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10h6v4H9z" />
+        </svg>
+        <span className="hidden md:inline text-[10px] uppercase font-bold tracking-wider">Stop</span>
       </button>
     </div>
   );

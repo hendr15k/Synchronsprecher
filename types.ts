@@ -29,3 +29,27 @@ export const AVAILABLE_VOICES: VoiceConfig[] = [
   { name: VoiceName.Fenrir, label: 'Fenrir', gender: 'Male', description: 'Energetic, fast-paced, conversational' },
   { name: VoiceName.Zephyr, label: 'Zephyr', gender: 'Female', description: 'Friendly, bright, helpful' },
 ];
+
+// System voices detected at runtime
+export let SYSTEM_VOICES: SpeechSynthesisVoice[] = [];
+
+export function loadSystemVoices(): Promise<SpeechSynthesisVoice[]> {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) {
+      resolve([]);
+      return;
+    }
+    
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      SYSTEM_VOICES = voices;
+      resolve(voices);
+      return;
+    }
+    
+    window.speechSynthesis.onvoiceschanged = () => {
+      SYSTEM_VOICES = window.speechSynthesis.getVoices();
+      resolve(SYSTEM_VOICES);
+    };
+  });
+}
