@@ -1,20 +1,29 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Synchronsprecher 🎙️
 
-# Run and deploy your AI Studio app
+AI-gestützter Text-to-Speech Reader mit Multi-Speaker-Erkennung. Lade PDF, ePub oder TXT hoch — verschiedene Sprecher-Stimmen werden automatisch erkannt und unterschiedlichen Browser-Stimmen zugeordnet.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1UDSqMe0vgWSt4VJjXHF7Rkw3KPtLG0d1
+- 🎙️ **Multi-Speaker Mode** — Erkennt Dialog-Formate und weist verschiedene Stimmen zu
+- 📄 **Datei-Upload** — PDF, ePub, TXT Unterstützung
+- 📖 **Reader Mode** — Autoscroll mit aktivem Text-Chunk Highlight
+- 🎧 **Mehrere Stimmen** — 20+ Browser-Stimmen konfigurierbar
+- ⏸️ **Chunk-Steuerung** — Text wird in Abschnitte zerlegt, einzeln abspielbar
+- 🌐 **Kein API-Key nötig** — Nutzt die Web Speech API des Browsers
+- 📱 **PWA** — Installierbar, funktioniert mobil
 
-## Run Locally
+## Tech-Stack
 
-**Prerequisites:**  Node.js
+- **Frontend:** React 19 + TypeScript + Vite
+- **TTS:** Web Speech API (Browser-nativ)
+- **Parsing:** pdf.js, ePub-Parser, TXT
+- **UI:** Custom mit Tailwind-ähnlichem CSS
 
+## Lokal starten
 
-1. Install dependencies:
-   `npm install`
-2. Set the `VITE_GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm install
+npm run dev
+```
+
+Brauchst **kein** API-Key — läuft komplett im Browser.
