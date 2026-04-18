@@ -1,10 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { VoiceName, VoiceConfig, AVAILABLE_VOICES, loadSystemVoices } from './types';
-import { speakWithWebSpeech, cancelGenerations } from './services/geminiService';
+import { VoiceName, AVAILABLE_VOICES, loadSystemVoices, SpeechSettings, DEFAULT_SPEECH_SETTINGS } from './types';
+import { speakWithWebSpeech, cancelGenerations, pauseSpeech, resumeSpeech, updateSpeechSettings } from './services/geminiService';
 import { parseFile } from './utils/fileParsers';
 import { chunkText } from './utils/textProcessors';
 import { VoiceSelector } from './components/VoiceSelector';
 import { PlayerBar } from './components/PlayerBar';
+
+const RATE_LABELS: Record<number, string> = {
+  0.5: '0.5× Very Slow',
+  0.75: '0.75× Slow',
+  1.0: '1× Normal',
+  1.25: '1.25× Fast',
+  1.5: '1.5× Very Fast',
+  1.75: '1.75× Speedy',
+  2.0: '2× Maximum',
+};
+
+const RATE_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 const App: React.FC = () => {
   const [text, setText] = useState<string>(
@@ -16,13 +28,16 @@ const App: React.FC = () => {
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [systemVoicesLoaded, setSystemVoicesLoaded] = useState(false);
-  
+
   // Text Chunks
   const [textChunks, setTextChunks] = useState<string[]>([]);
   const [currentChunkIndex, setCurrentChunkIndex] = useState<number>(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [estimatedProgress, setEstimatedProgress] = useState(0);
+  const [speechSettings, setSpeechSettings] = useState<SpeechSettings>(DEFAULT_SPEECH_SETTINGS);
+  const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
 
   const activeChunkRef = useRef<HTMLDivElement | null>(null);
   const progressTimerRef = useRef<number | null>(null);
@@ -50,6 +65,7 @@ const App: React.FC = () => {
   const stopSpeaking = () => {
     cancelGenerations();
     setIsSpeaking(false);
+    setIsPaused(false);
     setCurrentChunkIndex(0);
     setEstimatedProgress(0);
     if (progressTimerRef.current) {
@@ -61,6 +77,7 @@ const App: React.FC = () => {
   const speakChunk = (index: number, allChunks: string[]) => {
     if (index >= allChunks.length) {
       setIsSpeaking(false);
+      setIsPaused(false);
       setEstimatedProgress(100);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
       return;
@@ -68,12 +85,14 @@ const App: React.FC = () => {
 
     setCurrentChunkIndex(index);
     setIsSpeaking(true);
+    setIsPaused(false);
     setError(null);
 
-    // Estimate duration: ~150 words per minute
+    // Estimate duration based on current rate
     const wordCount = allChunks[index].split(/\s+/).length;
-    const estimatedSeconds = (wordCount / 150) * 60;
-    
+    const effectiveWPM = 150 * speechSettings.rate;
+    const estimatedSeconds = (wordCount / effectiveWPM) * 60;
+
     // Start progress simulation
     let elapsed = 0;
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
@@ -89,23 +108,24 @@ const App: React.FC = () => {
       selectedVoice,
       useMultiSpeaker,
       () => {
-        // Done speaking this chunk
         if (progressTimerRef.current) clearInterval(progressTimerRef.current);
         speakChunk(index + 1, allChunks);
       },
       (err) => {
         if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-        if (!err.includes('cancelled')) {
+        if (!err.includes('cancelled') && !err.includes('interrupted')) {
           setError(err);
         }
         setIsSpeaking(false);
-      }
+        setIsPaused(false);
+      },
+      speechSettings
     );
   };
 
   const startReading = async () => {
     if (!text.trim()) return;
-    
+
     stopSpeaking();
     setIsReaderMode(true);
     setError(null);
@@ -120,18 +140,42 @@ const App: React.FC = () => {
   const jumpToChunk = (index: number) => {
     cancelGenerations();
     if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    setIsPaused(false);
     speakChunk(index, textChunks);
   };
 
   const togglePlayPause = () => {
-    if (isSpeaking) {
-      window.speechSynthesis?.pause();
+    if (!isSpeaking && !isPaused) return;
+    if (isPaused) {
+      resumeSpeech();
+      setIsPaused(false);
+      setIsSpeaking(true);
+    } else {
+      pauseSpeech();
+      setIsPaused(true);
       setIsSpeaking(false);
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-    } else {
-      window.speechSynthesis?.resume();
-      setIsSpeaking(true);
     }
+  };
+
+  const handleSpeedChange = (rate: number) => {
+    const newSettings = { ...speechSettings, rate };
+    setSpeechSettings(newSettings);
+    updateSpeechSettings(newSettings);
+  };
+
+  const previewVoice = () => {
+    cancelGenerations();
+    setIsPreviewingVoice(true);
+    const previewText = "Hello! This is how your selected voice sounds. Try it now!";
+    speakWithWebSpeech(
+      previewText,
+      selectedVoice,
+      false,
+      () => setIsPreviewingVoice(false),
+      () => setIsPreviewingVoice(false),
+      speechSettings
+    );
   };
 
   const processFile = async (file: File) => {
@@ -146,6 +190,11 @@ const App: React.FC = () => {
     } finally {
       setIsProcessingFile(false);
     }
+  };
+
+  const getSpeedLabel = () => {
+    const rate = Math.round(speechSettings.rate * 100) / 100;
+    return RATE_LABELS[rate] || `${rate}×`;
   };
 
   return (
@@ -204,9 +253,34 @@ const App: React.FC = () => {
                 </button>
               </div>
             </div>
-            
+
             <VoiceSelector label="Narrator" selectedVoice={selectedVoice} onSelectVoice={setSelectedVoice}
-              disabled={isProcessingFile || isSpeaking} />
+              disabled={isProcessingFile || isSpeaking || isPreviewingVoice} />
+
+            {/* Voice Preview Button */}
+            <button
+              onClick={previewVoice}
+              disabled={isProcessingFile || isSpeaking || isPreviewingVoice}
+              className={`mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all
+                ${isPreviewingVoice
+                  ? 'bg-indigo-500/20 border-indigo-500 text-indigo-200 cursor-default'
+                  : isSpeaking
+                    ? 'bg-stone-900 border-stone-800 text-stone-600 cursor-not-allowed'
+                    : 'bg-stone-900 border-stone-800 text-stone-300 hover:bg-stone-800 hover:border-stone-700 hover:text-white'
+                }`}
+            >
+              {isPreviewingVoice ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5 text-indigo-400" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                  Playing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M12 9l-3 3m0 0l-3-3m3 3V5" /></svg>
+                  Preview Voice
+                </>
+              )}
+            </button>
 
             {useMultiSpeaker && (
               <div className="mt-4 p-3 bg-stone-900 border border-stone-800 rounded-lg animate-in fade-in slide-in-from-top-2 border-l-4 border-l-indigo-500">
@@ -215,6 +289,46 @@ const App: React.FC = () => {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Speed Control */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xs font-bold text-stone-500 uppercase tracking-wider">Speed</h2>
+              <span className="text-[11px] text-indigo-300 font-medium">{getSpeedLabel()}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              {RATE_OPTIONS.map((rate) => (
+                <button
+                  key={rate}
+                  onClick={() => handleSpeedChange(rate)}
+                  title={RATE_LABELS[rate] || `${rate}×`}
+                  disabled={isProcessingFile}
+                  className={`
+                    flex-1 py-1.5 rounded text-[10px] font-mono font-bold transition-all
+                    ${speechSettings.rate === rate
+                      ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/30'
+                      : 'bg-stone-900 text-stone-500 hover:bg-stone-800 hover:text-stone-300'
+                    }
+                    ${isProcessingFile ? 'opacity-50 cursor-not-allowed' : ''}
+                  `}
+                >
+                  {rate}×
+                </button>
+              ))}
+            </div>
+            <div className="mt-2">
+              <input
+                type="range"
+                min="0.5"
+                max="2.0"
+                step="0.05"
+                value={speechSettings.rate}
+                onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
+                disabled={isProcessingFile}
+                className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-indigo-500 disabled:opacity-50"
+              />
+            </div>
           </div>
 
           {systemVoicesLoaded && (
@@ -235,7 +349,7 @@ const App: React.FC = () => {
             const file = e.dataTransfer.files?.[0];
             if (file) await processFile(file);
           }}>
-          
+
           {isDragging && (
             <div className="absolute inset-0 z-50 bg-indigo-500/10 backdrop-blur-sm border-2 border-dashed border-indigo-500 flex flex-col items-center justify-center">
               <div className="text-2xl font-bold text-indigo-200 animate-bounce">Drop file</div>
@@ -249,7 +363,7 @@ const App: React.FC = () => {
               Upload
             </button>
             <button onClick={() => setUseMultiSpeaker(!useMultiSpeaker)}
-              className={`px-3 py-2 rounded text-xs font-medium border ${useMultiSpeaker ? 'bg-indigo-500/20 border-indigo-500 text-indigo-200' : 'bg-stone-800 border-stone-700 text-stone-400'}`}>
+              className={`px-3 py-2 rounded text-xs font-medium border              ${useMultiSpeaker ? 'bg-indigo-500/20 border-indigo-500 text-indigo-200' : 'bg-stone-800 border-stone-700 text-stone-400'}`}>
               Auto-Cast: {useMultiSpeaker ? "ON" : "OFF"}
             </button>
           </div>
@@ -286,8 +400,8 @@ const App: React.FC = () => {
                   Extracting Text...
                 </div>
               )}
-              
-              {!isReaderMode && !isSpeaking && (
+
+              {!isReaderMode && !isSpeaking && !isPaused && (
                 <button onClick={startReading} disabled={isProcessingFile || !text.trim()}
                   className="flex items-center gap-2 px-8 py-4 rounded-full font-bold shadow-2xl bg-white text-black hover:bg-stone-200 transition-all transform hover:scale-105">
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
@@ -295,10 +409,20 @@ const App: React.FC = () => {
                 </button>
               )}
 
-              {isSpeaking && (
-                <div className="px-6 py-3 rounded-full bg-stone-800 text-stone-400 flex items-center gap-3 border border-stone-700 shadow-xl">
-                  <svg className="animate-spin h-5 w-5 text-indigo-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  <span>Reading {currentChunkIndex + 1}/{textChunks.length}...</span>
+              {(isSpeaking || isPaused) && (
+                <div className={`px-6 py-3 rounded-full flex items-center gap-3 border shadow-xl ${
+                  isPaused
+                    ? 'bg-stone-900 text-stone-400 border-stone-700'
+                    : 'bg-stone-800 text-stone-400 border-stone-700'
+                }`}>
+                  {isSpeaking ? (
+                    <svg className="animate-spin h-5 w-5 text-indigo-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  ) : (
+                    <svg className="h-5 w-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+                  )}
+                  <span>
+                    {isPaused ? 'Paused' : 'Reading'} {currentChunkIndex + 1}/{textChunks.length}
+                  </span>
                 </div>
               )}
             </div>
@@ -313,15 +437,21 @@ const App: React.FC = () => {
       </div>
 
       <PlayerBar
-        isPlaying={isSpeaking}
+        isPlaying={isSpeaking && !isPaused}
         onPlayPause={togglePlayPause}
         onSeek={() => {}}
         onGenerateImage={() => setError('Image generation requires an API key')}
         isGeneratingImage={false}
         currentTime={estimatedProgress}
         duration={100}
-        disabled={!isReaderMode}
-        title={isSpeaking ? `Reading chunk ${currentChunkIndex + 1}/${textChunks.length}` : "Synchronsprecher"}
+        disabled={!isReaderMode || (!isSpeaking && !isPaused)}
+        title={
+          isPaused
+            ? `Paused at chunk ${currentChunkIndex + 1}/${textChunks.length}`
+            : isSpeaking
+              ? `Reading chunk ${currentChunkIndex + 1}/${textChunks.length}`
+              : "Synchronsprecher"
+        }
         isPercentage={true}
       />
     </div>

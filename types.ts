@@ -6,6 +6,16 @@ export enum VoiceName {
   Zephyr = 'Zephyr',
 }
 
+export interface SpeechSettings {
+  rate: number;   // 0.5 to 2.0
+  pitch: number;  // 0.5 to 2.0
+}
+
+export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
+  rate: 1.0,
+  pitch: 1.0,
+};
+
 export interface AudioState {
   isPlaying: boolean;
   currentTime: number;
