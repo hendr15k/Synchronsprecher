@@ -1,7 +1,7 @@
 // Web Speech API based TTS - No API key required!
 // Replaces Google Gemini API with browser-native SpeechSynthesis
 
-import { VoiceName } from "../types";
+import { VoiceName, SpeechSettings, DEFAULT_SPEECH_SETTINGS } from "../types";
 
 // --- Voice Mapping (Web Speech API voices) ---
 // Maps our voice names to preferred system voice patterns
@@ -150,6 +150,9 @@ export function cancelGenerations() {
 
 let currentUtterance: SpeechSynthesisUtterance | null = null;
 let speechResolve: (() => void) | null = null;
+let isPaused = false;
+let pausedResolve: (() => void) | null = null;
+let currentSettings: SpeechSettings = DEFAULT_SPEECH_SETTINGS;
 
 function speakText(text: string, voiceName: VoiceName): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -215,14 +218,25 @@ export function speakWithWebSpeech(
   voice: VoiceName,
   isMultiSpeaker: boolean,
   onDone: () => void,
-  onError: (err: string) => void
+  onError: (err: string) => void,
+  settings: SpeechSettings = DEFAULT_SPEECH_SETTINGS
 ) {
   if (!window.speechSynthesis) {
     onError('Speech Synthesis not supported');
     return;
   }
 
+  // If paused, resume instead
+  if (isPaused && currentUtterance) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+    return;
+  }
+
+  // Fresh start
   window.speechSynthesis.cancel();
+  isPaused = false;
+  currentSettings = settings;
 
   if (!isMultiSpeaker) {
     const utterance = new SpeechSynthesisUtterance(text);
@@ -230,62 +244,92 @@ export function speakWithWebSpeech(
     const bestVoice = findBestVoice(preference);
     if (bestVoice) utterance.voice = bestVoice;
     utterance.lang = 'en-US';
-    utterance.rate = 0.95;
-    
-    utterance.onend = () => onDone();
-    utterance.onerror = (e) => onError(`Speech error: ${e.error}`);
-    
+    utterance.rate = currentSettings.rate;
+    utterance.pitch = currentSettings.pitch;
+
+    utterance.onend = () => {
+      currentUtterance = null;
+      onDone();
+    };
+    utterance.onerror = (e) => {
+      currentUtterance = null;
+      if (e.error !== 'interrupted') {
+        onError(`Speech error: ${e.error}`);
+      }
+    };
+
     currentUtterance = utterance;
     window.speechSynthesis.speak(utterance);
   } else {
-    // Multi-speaker: segment text and use different voices
     const segments = segmentText(text);
     let index = 0;
 
     const speakNext = () => {
       if (index >= segments.length) {
+        currentUtterance = null;
         onDone();
         return;
       }
 
       const seg = segments[index];
       const utterance = new SpeechSynthesisUtterance(seg.text);
-      
-      // Narrator gets the selected voice, characters get different ones
+
       if (seg.speaker === 'Narrator') {
         const preference = VOICE_PREFERENCES[voice];
         const bestVoice = findBestVoice(preference);
         if (bestVoice) utterance.voice = bestVoice;
       } else {
-        // Pick a different voice for characters
         const voices = getVoices();
         const availableVoices = voices.filter(v => v.lang.startsWith('en'));
         const charHash = seg.speaker.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
         const charVoice = availableVoices[charHash % Math.max(availableVoices.length, 1)];
         if (charVoice) utterance.voice = charVoice;
-        
-        // Slightly different pitch for characters
-        utterance.pitch = 1.1 + (charHash % 3) * 0.15;
+        utterance.pitch = (1.1 + (charHash % 3) * 0.15) * currentSettings.pitch;
       }
-      
+
       utterance.lang = 'en-US';
-      utterance.rate = 0.95;
-      
+      utterance.rate = currentSettings.rate;
+
       utterance.onend = () => {
         index++;
         speakNext();
       };
-      utterance.onerror = () => {
+      utterance.onerror = (e) => {
+        if (e.error !== 'interrupted') {
+          console.warn('Speech segment error:', e.error);
+        }
         index++;
         speakNext();
       };
-      
+
       currentUtterance = utterance;
       window.speechSynthesis.speak(utterance);
     };
 
     speakNext();
   }
+}
+
+export function pauseSpeech(): void {
+  if (window.speechSynthesis && currentUtterance && !isPaused) {
+    window.speechSynthesis.pause();
+    isPaused = true;
+  }
+}
+
+export function resumeSpeech(): void {
+  if (window.speechSynthesis && isPaused) {
+    window.speechSynthesis.resume();
+    isPaused = false;
+  }
+}
+
+export function isSpeechPaused(): boolean {
+  return isPaused;
+}
+
+export function updateSpeechSettings(settings: SpeechSettings): void {
+  currentSettings = settings;
 }
 
 // Stub for image generation (removed - no API key)
