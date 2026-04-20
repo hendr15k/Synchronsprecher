@@ -16,5 +16,14 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'pdfjs': ['pdfjs-dist'],
+          'react-vendor': ['react', 'react-dom'],
+        },
+      },
+    },
   }
 });
