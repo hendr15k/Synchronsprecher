@@ -37,16 +37,16 @@ async function parsePdf(file: File): Promise<string> {
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   const pdf = await loadingTask.promise;
   
-  let fullText = '';
+  const pageTexts: string[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
     const pageText = textContent.items
       .map((item: any) => (item as any).str)
       .join(' ');
-    fullText += pageText + '\n\n';
+    pageTexts.push(pageText);
   }
-  return fullText;
+  return pageTexts.length > 0 ? pageTexts.join('\n\n') + '\n\n' : '';
 }
 
 /**
