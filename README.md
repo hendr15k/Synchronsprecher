@@ -24,6 +24,11 @@ AI-gestützter Text-to-Speech Reader mit Multi-Speaker-Erkennung. Lade PDF, ePub
 ```bash
 npm install
 npm run dev
+npm run build
 ```
 
 Brauchst **kein** API-Key — läuft komplett im Browser.
+
+## Build-Status
+
+`npm run build` läuft erfolgreich. Beim Bundle erscheint nur der bekannte pdf.js-`eval`-Warnhinweis.
